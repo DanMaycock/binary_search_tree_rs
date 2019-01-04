@@ -47,6 +47,8 @@ impl<T: Clone + fmt::Debug> Node<T> {
     }
 }
 
+/// The tree structure.
+/// Stores the nodes in a genrational arena and the index of the root of the tree.
 pub struct Tree<T: Clone + fmt::Debug> {
     nodes: Arena<Node<T>>,
     pub root: Option<Index>,
@@ -61,23 +63,35 @@ impl<T: Clone + fmt::Debug> Tree<T> {
         }
     }
 
-    /// Returns if the tree has a root or not
+    /// Utility functon to check if the tree has a root node or not
     pub fn has_root(&self) -> bool {
         self.root.is_some()
     }
 
-    /// Creates a new root node for the tree
-    pub fn create_root(&mut self, contents: T) -> Index {
+    /// Creates a new root node for the tree and returns the index of the created node.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The value to populate the new node with
+    ///
+    pub fn create_root(&mut self, value: T) -> Index {
         debug_assert!(!self.has_root());
-        let root = self.nodes.insert(Node::new(contents));
+        let root = self.nodes.insert(Node::new(value));
         self.set_color(root, Color::BLACK);
         self.root = Some(root);
         root
     }
 
     /// Create and insert a new node immediately after the specified node and rebalance the tree
-    pub fn insert_after(&mut self, existing_node: Index, new_value: T) -> Index {
-        let new_node = self.nodes.insert(Node::new(new_value));
+    /// Returns the index of the newly created node.
+    ///
+    /// # Arguments
+    ///
+    /// * `existing_node` - The index of the existing node to insert the new node before
+    /// * `value` - The value to populate the newly created node with
+    ///
+    pub fn insert_after(&mut self, existing_node: Index, value: T) -> Index {
+        let new_node = self.nodes.insert(Node::new(value));
         let existing_node_next = self.get_next(existing_node);
         if self.get_right(existing_node).is_none() {
             self.set_right(existing_node, Some(new_node));
@@ -101,9 +115,16 @@ impl<T: Clone + fmt::Debug> Tree<T> {
         new_node
     }
 
-    /// Create and insert a new node immediately before the specified node and rebalance the tree
-    pub fn insert_before(&mut self, existing_node: Index, new_value: T) -> Index {
-        let new_node = self.nodes.insert(Node::new(new_value));
+    /// Create and insert a new node immediately before the specified node and rebalance the tree.
+    /// Returns the index of the newly created node.
+    ///
+    /// # Arguments
+    ///
+    /// * `existing_node` - The index of the existing node to insert the new node before
+    /// * `value` - The value to populate the newly created node with
+    ///
+    pub fn insert_before(&mut self, existing_node: Index, value: T) -> Index {
+        let new_node = self.nodes.insert(Node::new(value));
         let existing_node_prev = self.get_prev(existing_node);
         if self.get_left(existing_node).is_none() {
             self.set_left(existing_node, Some(new_node));
@@ -126,6 +147,11 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     }
 
     /// Delete the specified node from the tree and rebalance the remaining nodes
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - The index of the node to delete from the tree
+    ///
     pub fn delete_node(&mut self, node: Index) {
         if self.get_left(node).is_some() && self.get_right(node).is_some() {
             self.swap_nodes(node, self.get_next(node).unwrap());
@@ -564,16 +590,35 @@ impl<T: Clone + fmt::Debug> Tree<T> {
         }
     }
 
+    /// Set the contents of the specified
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - The node to set the contents on
+    /// * `contents` - The new contents to populate the node with
+    ///
     pub fn set_contents(&mut self, node: Index, contents: T) {
         let node = self.nodes.get_mut(node).unwrap();
         node.contents = contents;
     }
 
+    /// Returns a refernence to the contents of the specified node
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - The node to return the contents of
+    ///
     pub fn get_contents(&self, node: Index) -> &T {
         let node = self.nodes.get(node).unwrap();
         &node.contents
     }
 
+    /// Returns a mutable refernence to the contents of the specified node
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - The node to return the contents of
+    ///
     pub fn get_mut_contents(&mut self, node: Index) -> &mut T {
         let node = self.nodes.get_mut(node).unwrap();
         &mut node.contents
