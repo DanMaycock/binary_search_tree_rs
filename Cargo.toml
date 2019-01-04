@@ -1,0 +1,8 @@
+[package]
+name = "binary_search_tree"
+version = "0.1.0"
+authors = ["Daniel Maycock <DanMaycock13@googlemail.com>"]
+edition = "2018"
+
+[dependencies]
+generational-arena = "0.2.0"
