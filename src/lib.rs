@@ -529,7 +529,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
         node.right = right;
     }
 
-    fn get_right(&self, node: Index) -> Option<Index> {
+    pub fn get_right(&self, node: Index) -> Option<Index> {
         let node = self.nodes.get(node).unwrap();
         node.right
     }
@@ -539,7 +539,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
         node.left = left;
     }
 
-    fn get_left(&self, node: Index) -> Option<Index> {
+    pub fn get_left(&self, node: Index) -> Option<Index> {
         let node = self.nodes.get(node).unwrap();
         node.left
     }
@@ -549,7 +549,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
         node.parent = parent;
     }
 
-    fn get_parent(&self, node: Index) -> Option<Index> {
+    pub fn get_parent(&self, node: Index) -> Option<Index> {
         let node = self.nodes.get(node).unwrap();
         node.parent
     }
@@ -559,7 +559,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
         node.prev = prev;
     }
 
-    fn get_prev(&self, node: Index) -> Option<Index> {
+    pub fn get_prev(&self, node: Index) -> Option<Index> {
         let node = self.nodes.get(node).unwrap();
         node.prev
     }
@@ -569,7 +569,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
         node.next = next;
     }
 
-    fn get_next(&self, node: Index) -> Option<Index> {
+    pub fn get_next(&self, node: Index) -> Option<Index> {
         let node = self.nodes.get(node).unwrap();
         node.next
     }
@@ -623,6 +623,16 @@ impl<T: Clone + fmt::Debug> Tree<T> {
         let node = self.nodes.get_mut(node).unwrap();
         &mut node.contents
     }
+
+    pub fn get_leftmost_node(&self) -> Option<Index> {
+        let mut node = self.root;
+        if node.is_some() {
+            while self.get_left(node.unwrap()).is_some() {
+                node = self.get_left(node.unwrap());
+            }
+        }
+        node
+    }
 }
 
 #[cfg(test)]
@@ -674,16 +684,6 @@ mod tests {
                 }
             }
             out
-        }
-
-        fn get_leftmost_node(&self) -> Option<Index> {
-            let mut node = self.root;
-            if node.is_some() {
-                while self.get_left(node.unwrap()).is_some() {
-                    node = self.get_left(node.unwrap());
-                }
-            }
-            node
         }
 
         pub fn get_nodes_order(&self) -> String {
