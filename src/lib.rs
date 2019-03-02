@@ -1,4 +1,4 @@
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{new_key_type, SlotMap, SecondaryMap};
 use std::fmt;
 
 new_key_type! { pub struct NodeKey; }
@@ -17,12 +17,10 @@ enum NodeType {
 }
 
 #[derive(Clone, Copy)]
-pub struct Node<T: Clone + Copy> {
+pub struct Node {
     parent: Option<NodeKey>,
     left: Option<NodeKey>,
     right: Option<NodeKey>,
-
-    contents: T,
 
     prev: Option<NodeKey>,
     next: Option<NodeKey>,
@@ -30,16 +28,13 @@ pub struct Node<T: Clone + Copy> {
     color: Color,
 }
 
-impl<T: Clone + Copy + fmt::Debug> Node<T> {
-    fn new(contents: T) -> Self {
+impl Node {
+    fn new() -> Self {
         Node {
             // Tree structure
             parent: None,
             left: None,
             right: None,
-
-            // Data
-            contents,
 
             // Optimisation
             prev: None,
@@ -51,16 +46,18 @@ impl<T: Clone + Copy + fmt::Debug> Node<T> {
 
 /// The tree structure.
 /// Stores the nodes in a genrational arena and the NodeKey of the root of the tree.
-pub struct Tree<T: Clone + Copy + fmt::Debug> {
-    nodes: SlotMap<NodeKey, Node<T>>,
+pub struct Tree<T: Clone + fmt::Debug> {
+    nodes: SlotMap<NodeKey, Node>,
+    node_data: SecondaryMap<NodeKey, T>,
     pub root: Option<NodeKey>,
 }
 
-impl<T: Clone + Copy + fmt::Debug> Tree<T> {
+impl<T: Clone + fmt::Debug> Tree<T> {
     /// Create a new empty tree
     pub fn new() -> Self {
         Tree {
             nodes: SlotMap::with_key(),
+            node_data: SecondaryMap::new(),
             root: None,
         }
     }
@@ -78,7 +75,8 @@ impl<T: Clone + Copy + fmt::Debug> Tree<T> {
     ///
     pub fn create_root(&mut self, value: T) -> NodeKey {
         debug_assert!(!self.has_root());
-        let root = self.nodes.insert(Node::new(value));
+        let root = self.nodes.insert(Node::new());
+        self.node_data.insert(root, value);
         self.set_color(root, Color::BLACK);
         self.root = Some(root);
         root
@@ -93,7 +91,8 @@ impl<T: Clone + Copy + fmt::Debug> Tree<T> {
     /// * `value` - The value to populate the newly created node with
     ///
     pub fn insert_after(&mut self, existing_node: NodeKey, value: T) -> NodeKey {
-        let new_node = self.nodes.insert(Node::new(value));
+        let new_node = self.nodes.insert(Node::new());
+        self.node_data.insert(new_node, value);
         let existing_node_next = self.get_next(existing_node);
         if self.get_right(existing_node).is_none() {
             self.set_right(existing_node, Some(new_node));
@@ -126,7 +125,8 @@ impl<T: Clone + Copy + fmt::Debug> Tree<T> {
     /// * `value` - The value to populate the newly created node with
     ///
     pub fn insert_before(&mut self, existing_node: NodeKey, value: T) -> NodeKey {
-        let new_node = self.nodes.insert(Node::new(value));
+        let new_node = self.nodes.insert(Node::new());
+        self.node_data.insert(new_node, value);
         let existing_node_prev = self.get_prev(existing_node);
         if self.get_left(existing_node).is_none() {
             self.set_left(existing_node, Some(new_node));
@@ -600,8 +600,7 @@ impl<T: Clone + Copy + fmt::Debug> Tree<T> {
     /// * `contents` - The new contents to populate the node with
     ///
     pub fn set_contents(&mut self, node: NodeKey, contents: T) {
-        let node = self.nodes.get_mut(node).unwrap();
-        node.contents = contents;
+        self.node_data[node] = contents;
     }
 
     /// Returns a refernence to the contents of the specified node
@@ -611,8 +610,7 @@ impl<T: Clone + Copy + fmt::Debug> Tree<T> {
     /// * `node` - The node to return the contents of
     ///
     pub fn get_contents(&self, node: NodeKey) -> &T {
-        let node = self.nodes.get(node).unwrap();
-        &node.contents
+        &self.node_data[node]
     }
 
     /// Returns a mutable refernence to the contents of the specified node
@@ -622,8 +620,7 @@ impl<T: Clone + Copy + fmt::Debug> Tree<T> {
     /// * `node` - The node to return the contents of
     ///
     pub fn get_mut_contents(&mut self, node: NodeKey) -> &mut T {
-        let node = self.nodes.get_mut(node).unwrap();
-        &mut node.contents
+        &mut self.node_data[node]
     }
 
     pub fn get_leftmost_node(&self) -> Option<NodeKey> {
@@ -641,7 +638,7 @@ impl<T: Clone + Copy + fmt::Debug> Tree<T> {
 mod tests {
     use super::*;
 
-    impl<T: Clone + Copy + fmt::Debug> Tree<T> {
+    impl<T: Clone + fmt::Debug> Tree<T> {
         fn check_black_heights(&self, node: Option<NodeKey>) -> usize {
             if node.is_none() {
                 1
