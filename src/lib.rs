@@ -1,5 +1,7 @@
-use generational_arena::{Arena, Index};
+use slotmap::{new_key_type, SlotMap};
 use std::fmt;
+
+new_key_type! { pub struct NodeKey; }
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 enum Color {
@@ -14,21 +16,21 @@ enum NodeType {
     Orphan,
 }
 
-#[derive(Debug)]
-pub struct Node<T: Clone + fmt::Debug> {
-    parent: Option<Index>,
-    left: Option<Index>,
-    right: Option<Index>,
+#[derive(Clone, Copy)]
+pub struct Node<T: Clone + Copy> {
+    parent: Option<NodeKey>,
+    left: Option<NodeKey>,
+    right: Option<NodeKey>,
 
     contents: T,
 
-    prev: Option<Index>,
-    next: Option<Index>,
+    prev: Option<NodeKey>,
+    next: Option<NodeKey>,
 
     color: Color,
 }
 
-impl<T: Clone + fmt::Debug> Node<T> {
+impl<T: Clone + Copy + fmt::Debug> Node<T> {
     fn new(contents: T) -> Self {
         Node {
             // Tree structure
@@ -48,17 +50,17 @@ impl<T: Clone + fmt::Debug> Node<T> {
 }
 
 /// The tree structure.
-/// Stores the nodes in a genrational arena and the index of the root of the tree.
-pub struct Tree<T: Clone + fmt::Debug> {
-    nodes: Arena<Node<T>>,
-    pub root: Option<Index>,
+/// Stores the nodes in a genrational arena and the NodeKey of the root of the tree.
+pub struct Tree<T: Clone + Copy + fmt::Debug> {
+    nodes: SlotMap<NodeKey, Node<T>>,
+    pub root: Option<NodeKey>,
 }
 
-impl<T: Clone + fmt::Debug> Tree<T> {
+impl<T: Clone + Copy + fmt::Debug> Tree<T> {
     /// Create a new empty tree
     pub fn new() -> Self {
         Tree {
-            nodes: Arena::new(),
+            nodes: SlotMap::with_key(),
             root: None,
         }
     }
@@ -68,13 +70,13 @@ impl<T: Clone + fmt::Debug> Tree<T> {
         self.root.is_some()
     }
 
-    /// Creates a new root node for the tree and returns the index of the created node.
+    /// Creates a new root node for the tree and returns the NodeKey of the created node.
     ///
     /// # Arguments
     ///
     /// * `value` - The value to populate the new node with
     ///
-    pub fn create_root(&mut self, value: T) -> Index {
+    pub fn create_root(&mut self, value: T) -> NodeKey {
         debug_assert!(!self.has_root());
         let root = self.nodes.insert(Node::new(value));
         self.set_color(root, Color::BLACK);
@@ -83,14 +85,14 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     }
 
     /// Create and insert a new node immediately after the specified node and rebalance the tree
-    /// Returns the index of the newly created node.
+    /// Returns the NodeKey of the newly created node.
     ///
     /// # Arguments
     ///
-    /// * `existing_node` - The index of the existing node to insert the new node before
+    /// * `existing_node` - The NodeKey of the existing node to insert the new node before
     /// * `value` - The value to populate the newly created node with
     ///
-    pub fn insert_after(&mut self, existing_node: Index, value: T) -> Index {
+    pub fn insert_after(&mut self, existing_node: NodeKey, value: T) -> NodeKey {
         let new_node = self.nodes.insert(Node::new(value));
         let existing_node_next = self.get_next(existing_node);
         if self.get_right(existing_node).is_none() {
@@ -116,14 +118,14 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     }
 
     /// Create and insert a new node immediately before the specified node and rebalance the tree.
-    /// Returns the index of the newly created node.
+    /// Returns the NodeKey of the newly created node.
     ///
     /// # Arguments
     ///
-    /// * `existing_node` - The index of the existing node to insert the new node before
+    /// * `existing_node` - The NodeKey of the existing node to insert the new node before
     /// * `value` - The value to populate the newly created node with
     ///
-    pub fn insert_before(&mut self, existing_node: Index, value: T) -> Index {
+    pub fn insert_before(&mut self, existing_node: NodeKey, value: T) -> NodeKey {
         let new_node = self.nodes.insert(Node::new(value));
         let existing_node_prev = self.get_prev(existing_node);
         if self.get_left(existing_node).is_none() {
@@ -150,9 +152,9 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     ///
     /// # Arguments
     ///
-    /// * `node` - The index of the node to delete from the tree
+    /// * `node` - The NodeKey of the node to delete from the tree
     ///
-    pub fn delete_node(&mut self, node: Index) {
+    pub fn delete_node(&mut self, node: NodeKey) {
         if self.get_left(node).is_some() && self.get_right(node).is_some() {
             self.swap_nodes(node, self.get_next(node).unwrap());
         }
@@ -215,7 +217,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     }
 
     // Finds the node that will replace a deleted node in the tree
-    fn get_replacement_node(&self, node: Index) -> Option<Index> {
+    fn get_replacement_node(&self, node: NodeKey) -> Option<NodeKey> {
         let left = self.get_left(node);
         let right = self.get_right(node);
         if left.is_some() && right.is_some() {
@@ -234,7 +236,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     }
 
     // Updates the prev and next entrys of a node that is being deleted to ensure that the order of the nodes is correct
-    fn update_order_for_deletion(&mut self, deleted_node: Index) {
+    fn update_order_for_deletion(&mut self, deleted_node: NodeKey) {
         let next = self.get_next(deleted_node);
         let prev = self.get_prev(deleted_node);
         if next.is_some() {
@@ -246,7 +248,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     }
 
     // Fix a double black node that has been caused by deleting a node
-    fn fix_double_black(&mut self, mut node: Index) {
+    fn fix_double_black(&mut self, mut node: NodeKey) {
         while Some(node) != self.root {
             let sibling = self.get_sibling(node);
             let parent = self.get_parent(node);
@@ -318,7 +320,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     }
 
     // Rebalances the tree after inserting a new node
-    fn insert_rebalance(&mut self, mut node: Index) {
+    fn insert_rebalance(&mut self, mut node: NodeKey) {
         while self.get_color(self.get_parent(node)) == Color::RED {
             // Only get here for cases 3, 4 and 5, cases 1 and 2 are trivial
             // Parent is RED so it exists
@@ -368,7 +370,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     //  a   q   -->    p   c
     //     / \        / \
     //    b   c      a   b
-    fn left_rotate(&mut self, rotation_root: Index) {
+    fn left_rotate(&mut self, rotation_root: NodeKey) {
         // Left rotation so pivot is to the right
         let pivot = self.get_right(rotation_root).unwrap();
         let pivot_left = self.get_left(pivot);
@@ -398,7 +400,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     //   p   c  -->    a   q
     //  / \               / \
     // a   b             b   c
-    fn right_rotate(&mut self, rotation_root: Index) {
+    fn right_rotate(&mut self, rotation_root: NodeKey) {
         // Right rotation so pivot is to the left
         let pivot = self.get_left(rotation_root).unwrap();
         let pivot_right = self.get_right(pivot);
@@ -423,7 +425,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     }
 
     // Swap the location in the tree of two nodes
-    fn swap_nodes(&mut self, node_1: Index, node_2: Index) {
+    fn swap_nodes(&mut self, node_1: NodeKey, node_2: NodeKey) {
         let mut node_1_parent = self.get_parent(node_1);
         let mut node_2_parent = self.get_parent(node_2);
         let node_1_right = self.get_right(node_1);
@@ -485,7 +487,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
 
     // Returns a NodeType enum indicating if the given node is a left child, right child in
     // relation to it's parent or an orphan
-    fn get_node_type(&self, node: Index) -> NodeType {
+    fn get_node_type(&self, node: NodeKey) -> NodeType {
         let parent = self.get_parent(node);
         if parent.is_some() {
             if self.get_left(parent.unwrap()) == Some(node) {
@@ -500,7 +502,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     }
 
     ///  Returns the sibling node to the current node, that is the other node that shares the same parent
-    fn get_sibling(&self, node: Index) -> Option<Index> {
+    fn get_sibling(&self, node: NodeKey) -> Option<NodeKey> {
         let parent = self.get_parent(node);
         match self.get_node_type(node) {
             NodeType::LeftChild => self.get_right(parent.unwrap()),
@@ -510,7 +512,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     }
 
     // Returns the uncle node of the current node, that is the sibling of the parent node if it exists.
-    fn get_uncle(&self, node: Index) -> Option<Index> {
+    fn get_uncle(&self, node: NodeKey) -> Option<NodeKey> {
         let parent = self.get_parent(node);
         if parent.is_some() {
             match self.get_node_type(parent.unwrap()) {
@@ -524,62 +526,62 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     }
 
     // Getter and setters
-    fn set_right(&mut self, node: Index, right: Option<Index>) {
+    fn set_right(&mut self, node: NodeKey, right: Option<NodeKey>) {
         let node = self.nodes.get_mut(node).unwrap();
         node.right = right;
     }
 
-    pub fn get_right(&self, node: Index) -> Option<Index> {
+    pub fn get_right(&self, node: NodeKey) -> Option<NodeKey> {
         let node = self.nodes.get(node).unwrap();
         node.right
     }
 
-    fn set_left(&mut self, node: Index, left: Option<Index>) {
+    fn set_left(&mut self, node: NodeKey, left: Option<NodeKey>) {
         let node = self.nodes.get_mut(node).unwrap();
         node.left = left;
     }
 
-    pub fn get_left(&self, node: Index) -> Option<Index> {
+    pub fn get_left(&self, node: NodeKey) -> Option<NodeKey> {
         let node = self.nodes.get(node).unwrap();
         node.left
     }
 
-    fn set_parent(&mut self, node: Index, parent: Option<Index>) {
+    fn set_parent(&mut self, node: NodeKey, parent: Option<NodeKey>) {
         let node = self.nodes.get_mut(node).unwrap();
         node.parent = parent;
     }
 
-    pub fn get_parent(&self, node: Index) -> Option<Index> {
+    pub fn get_parent(&self, node: NodeKey) -> Option<NodeKey> {
         let node = self.nodes.get(node).unwrap();
         node.parent
     }
 
-    fn set_prev(&mut self, node: Index, prev: Option<Index>) {
+    fn set_prev(&mut self, node: NodeKey, prev: Option<NodeKey>) {
         let node = self.nodes.get_mut(node).unwrap();
         node.prev = prev;
     }
 
-    pub fn get_prev(&self, node: Index) -> Option<Index> {
+    pub fn get_prev(&self, node: NodeKey) -> Option<NodeKey> {
         let node = self.nodes.get(node).unwrap();
         node.prev
     }
 
-    fn set_next(&mut self, node: Index, next: Option<Index>) {
+    fn set_next(&mut self, node: NodeKey, next: Option<NodeKey>) {
         let node = self.nodes.get_mut(node).unwrap();
         node.next = next;
     }
 
-    pub fn get_next(&self, node: Index) -> Option<Index> {
+    pub fn get_next(&self, node: NodeKey) -> Option<NodeKey> {
         let node = self.nodes.get(node).unwrap();
         node.next
     }
 
-    fn set_color(&mut self, node: Index, color: Color) {
+    fn set_color(&mut self, node: NodeKey, color: Color) {
         let node = self.nodes.get_mut(node).unwrap();
         node.color = color;
     }
 
-    fn get_color(&self, node: Option<Index>) -> Color {
+    fn get_color(&self, node: Option<NodeKey>) -> Color {
         if node.is_none() {
             Color::BLACK
         } else {
@@ -597,7 +599,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     /// * `node` - The node to set the contents on
     /// * `contents` - The new contents to populate the node with
     ///
-    pub fn set_contents(&mut self, node: Index, contents: T) {
+    pub fn set_contents(&mut self, node: NodeKey, contents: T) {
         let node = self.nodes.get_mut(node).unwrap();
         node.contents = contents;
     }
@@ -608,7 +610,7 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     ///
     /// * `node` - The node to return the contents of
     ///
-    pub fn get_contents(&self, node: Index) -> &T {
+    pub fn get_contents(&self, node: NodeKey) -> &T {
         let node = self.nodes.get(node).unwrap();
         &node.contents
     }
@@ -619,12 +621,12 @@ impl<T: Clone + fmt::Debug> Tree<T> {
     ///
     /// * `node` - The node to return the contents of
     ///
-    pub fn get_mut_contents(&mut self, node: Index) -> &mut T {
+    pub fn get_mut_contents(&mut self, node: NodeKey) -> &mut T {
         let node = self.nodes.get_mut(node).unwrap();
         &mut node.contents
     }
 
-    pub fn get_leftmost_node(&self) -> Option<Index> {
+    pub fn get_leftmost_node(&self) -> Option<NodeKey> {
         let mut node = self.root;
         if node.is_some() {
             while self.get_left(node.unwrap()).is_some() {
@@ -639,8 +641,8 @@ impl<T: Clone + fmt::Debug> Tree<T> {
 mod tests {
     use super::*;
 
-    impl<T: Clone + fmt::Debug> Tree<T> {
-        fn check_black_heights(&self, node: Option<Index>) -> usize {
+    impl<T: Clone + Copy + fmt::Debug> Tree<T> {
+        fn check_black_heights(&self, node: Option<NodeKey>) -> usize {
             if node.is_none() {
                 1
             } else {
@@ -664,7 +666,7 @@ mod tests {
             let mut out = "".to_string();
             if self.root.is_some() {
                 let mut queue = vec![self.root.unwrap()];
-                let mut current_node: Option<&Index>;
+                let mut current_node: Option<&NodeKey>;
 
                 while !queue.is_empty() {
                     current_node = queue.first();
